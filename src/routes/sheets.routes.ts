@@ -10,6 +10,7 @@ router.get('/auth/callback', sheetsController.handleCallback);
 
 // Sheet operations
 router.get('/:spreadsheetId', sheetsController.getSheetData);
+router.get('/:spreadsheetId/random', sheetsController.getRandomRow);
 router.post('/:spreadsheetId/sync', sheetsController.syncSheetData);
 
 export const sheetsRouter = router; 

@@ -70,6 +70,48 @@ export class SheetsController {
     }
   };
 
+  public getRandomRow = async (req: Request, res: Response) => {
+    try {
+      const sheets = google.sheets({ version: 'v4', auth: this.oauth2Client });
+      const spreadsheetId = req.params.spreadsheetId;
+
+      // Get all values from the sheet
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Sheet1',
+      });
+
+      const rows = response.data.values;
+      if (!rows || rows.length <= 1) { // Assuming first row is headers
+        throw new AppError(404, 'No data found in sheet');
+      }
+
+      // Skip header row (index 0) when selecting random row
+      const randomIndex = Math.floor(Math.random() * (rows.length - 1)) + 1;
+      const selectedRow = rows[randomIndex];
+
+      // Take only first 3 columns
+      const firstThreeColumns = selectedRow.slice(0, 3);
+
+      // Get header names from first row
+      const headers = rows[0].slice(0, 3);
+
+      // Create an object with header names as keys
+      const formattedResponse = headers.reduce((obj: Record<string, string>, header: string, index: number) => {
+        obj[header] = firstThreeColumns[index] || '';
+        return obj;
+      }, {});
+
+      res.json({
+        status: 'success',
+        data: formattedResponse
+      });
+    } catch (error) {
+      logger.error('Error fetching random row:', error);
+      throw new AppError(500, 'Failed to fetch random row');
+    }
+  };
+
   public syncSheetData = async (req: Request, res: Response) => {
     try {
       const sheets = google.sheets({ version: 'v4', auth: this.oauth2Client });
