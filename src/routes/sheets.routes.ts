@@ -8,6 +8,9 @@ const sheetsController = new SheetsController();
 router.get('/auth', sheetsController.getAuthUrl);
 router.get('/auth/callback', sheetsController.handleCallback);
 
+// List available sheets
+router.get('/list', sheetsController.listSheets);
+
 // Sheet operations
 router.get('/:spreadsheetId', sheetsController.getSheetData);
 router.get('/:spreadsheetId/random', sheetsController.getRandomRow);

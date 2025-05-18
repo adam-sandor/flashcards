@@ -1,5 +1,5 @@
 import styled from '@emotion/styled';
-import { SheetResponse } from '../types/sheet';
+import type { SheetResponse } from '../types/sheet.js';
 
 const Card = styled.div`
   background: white;

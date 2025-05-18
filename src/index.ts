@@ -6,6 +6,7 @@ import { createConnection } from 'typeorm';
 import { setupRoutes } from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
+import path from 'path';
 
 // Load environment variables
 dotenv.config();
@@ -14,15 +15,26 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors({
-  origin: 'http://localhost:5173', // Vite's default port
-  credentials: true
+app.use(cors());
+app.use(helmet({
+  contentSecurityPolicy: false // Disable CSP for development
 }));
-app.use(helmet());
 app.use(express.json());
 
-// Routes
+// API routes
 setupRoutes(app);
+
+// Serve static files from the React app
+const clientPath = path.resolve(__dirname, '..', 'client', 'dist');
+logger.info(`Serving static files from: ${clientPath}`);
+app.use(express.static(clientPath));
+
+// Handle React routing, return all requests to React app
+app.get('*', (_req, res) => {
+  const indexPath = path.join(clientPath, 'index.html');
+  logger.info(`Serving index.html from: ${indexPath}`);
+  res.sendFile(indexPath);
+});
 
 // Error handling
 app.use(errorHandler);

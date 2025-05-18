@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
 import styled from '@emotion/styled';
 import { WordCard } from './components/WordCard';
-import type { SheetResponse } from './types/sheet';
+import { SheetList } from './components/SheetList';
+import type { SheetResponse, Sheet } from './types/sheet';
 
 const Container = styled.div`
   min-height: 100vh;
@@ -56,46 +57,9 @@ const LoadingMessage = styled.div`
   font-size: 1.2rem;
 `;
 
-const SetupContainer = styled.div`
-  max-width: 600px;
-  margin: 2rem auto;
-  padding: 2rem;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-`;
-
-const Input = styled.input`
-  width: 100%;
-  padding: 0.8rem;
-  margin: 0.5rem 0;
-  border: 2px solid #e0e0e0;
-  border-radius: 6px;
-  font-size: 1rem;
-  transition: border-color 0.2s ease;
-
-  &:focus {
-    border-color: #3498db;
-    outline: none;
-  }
-`;
-
-const Instructions = styled.div`
-  margin: 1rem 0;
-  padding: 1rem;
-  background: #f8f9fa;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  color: #666;
-  line-height: 1.4;
-`;
-
-const InstructionStep = styled.li`
-  margin: 0.5rem 0;
-`;
-
 function App() {
   const [data, setData] = useState<SheetResponse['data'] | undefined>();
+  const [sheets, setSheets] = useState<Sheet[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -106,7 +70,7 @@ function App() {
   const initiateAuth = async () => {
     setIsAuthenticating(true);
     try {
-      const response = await axios.get('http://localhost:3000/api/sheets/auth');
+      const response = await axios.get('/api/sheets/auth');
       window.location.href = response.data.authUrl;
     } catch (err) {
       setError('Failed to initiate authentication. Please try again.');
@@ -114,9 +78,30 @@ function App() {
     }
   };
 
+  const fetchSheets = async () => {
+    try {
+      const response = await axios.get('/api/sheets/list');
+      setSheets(response.data.data);
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        const errorCode = err.response?.data?.code;
+        
+        if (status === 401 || errorCode === 401) {
+          await initiateAuth();
+          return;
+        }
+        
+        setError(err.response?.data?.message || 'Failed to fetch sheets list. Please try again.');
+      } else {
+        setError('Failed to fetch sheets list. Please try again.');
+      }
+    }
+  };
+
   const fetchRandomWord = useCallback(async () => {
     if (!spreadsheetId) {
-      setError('Please enter a spreadsheet ID first');
+      setError('Please select a spreadsheet first');
       return;
     }
 
@@ -124,38 +109,53 @@ function App() {
     setError(null);
     try {
       const response = await axios.get<SheetResponse>(
-        `http://localhost:3000/api/sheets/${spreadsheetId}/random`
+        `/api/sheets/${spreadsheetId}/random`
       );
       setData(response.data.data);
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 401) {
-        await initiateAuth();
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        const errorCode = err.response?.data?.code;
+        
+        if (status === 401 || errorCode === 401) {
+          await initiateAuth();
+          return;
+        }
+        
+        setError(err.response?.data?.message || 'Failed to fetch random word. Please try again.');
       } else {
-        setError('Failed to fetch random word. Please check your spreadsheet ID and try again.');
+        setError('Failed to fetch random word. Please try again.');
       }
     } finally {
       setIsLoading(false);
     }
   }, [spreadsheetId]);
 
-  const handleSpreadsheetIdSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    localStorage.setItem('spreadsheetId', spreadsheetId);
+  const handleSelectSheet = (sheetId: string) => {
+    setSpreadsheetId(sheetId);
+    localStorage.setItem('spreadsheetId', sheetId);
     fetchRandomWord();
   };
 
-  // Check if we're returning from OAuth
+  // Check URL parameters and handle authentication
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
+    const error = params.get('error');
     
-    if (code) {
+    if (error === 'auth_failed') {
+      setError('Authentication failed. Please try again.');
       window.history.replaceState({}, document.title, window.location.pathname);
-      if (spreadsheetId) {
-        fetchRandomWord();
-      }
+    } else if (code) {
+      // Remove the code from the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Fetch sheets list after successful authentication
+      fetchSheets();
+    } else {
+      // Initial load - try to fetch sheets, which will redirect to auth if needed
+      fetchSheets();
     }
-  }, [fetchRandomWord, spreadsheetId]);
+  }, []); // Only run on mount
 
   if (isAuthenticating) {
     return (
@@ -170,28 +170,8 @@ function App() {
     return (
       <Container>
         <Title>Random Word Generator</Title>
-        <SetupContainer>
-          <form onSubmit={handleSpreadsheetIdSubmit}>
-            <h2>Setup Your Spreadsheet</h2>
-            <Instructions>
-              <h3>How to get your Spreadsheet ID:</h3>
-              <ol>
-                <InstructionStep>Open your Google Spreadsheet</InstructionStep>
-                <InstructionStep>Look at the URL in your browser</InstructionStep>
-                <InstructionStep>The Spreadsheet ID is the long string of letters and numbers between /d/ and /edit</InstructionStep>
-                <InstructionStep>Example: docs.google.com/spreadsheets/d/<strong>spreadsheet-id-here</strong>/edit</InstructionStep>
-              </ol>
-            </Instructions>
-            <Input
-              type="text"
-              value={spreadsheetId}
-              onChange={(e) => setSpreadsheetId(e.target.value)}
-              placeholder="Paste your spreadsheet ID here"
-              required
-            />
-            <Button type="submit">Start Using App</Button>
-          </form>
-        </SetupContainer>
+        {error && <ErrorMessage>{error}</ErrorMessage>}
+        <SheetList sheets={sheets} onSelectSheet={handleSelectSheet} />
       </Container>
     );
   }
@@ -219,7 +199,7 @@ function App() {
         }}
         style={{ background: '#e74c3c' }}
       >
-        Change Spreadsheet
+        Change Sheet
       </Button>
     </Container>
   );
